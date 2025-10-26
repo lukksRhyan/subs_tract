@@ -63,6 +63,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         final String baseName = p.basenameWithoutExtension(_originalVideoPath!);
         final Directory tempDir = await getApplicationDocumentsDirectory();
         final String assOutputPath = '${tempDir.path}/$baseName.ass';
+        final String originalAssFinalPath = '$videoDir/${baseName}_original_extraida.ass'; // Novo: Caminho para salvar o .ass original
         _generatedJsonPath = '$videoDir/${baseName}_legendas.json';
 
         // Comando FFmpeg para extrair a primeira trilha de legenda em inglês
@@ -133,9 +134,12 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         final File jsonFile = File(_generatedJsonPath!);
         await jsonFile.writeAsString(jsonEncode(dialogues));
 
+        // Novo: Salva uma cópia do .ass original extraído para o usuário
+        await File(assOutputPath).copy(originalAssFinalPath);
+
         setState(() {
           _status =
-              'Arquivo JSON gerado com sucesso!\n\nAgora, traduza este arquivo:\n$_generatedJsonPath\n\n...e use o próximo passo.';
+              'Arquivos gerados com sucesso!\n\nOriginal .ass: $originalAssFinalPath\nJSON para traduzir: $_generatedJsonPath\n\n...e use o próximo passo.';
           _progress = 0.7;
           _isLoading = false;
         });
@@ -216,16 +220,18 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         }
 
         if (inEventsSection && line.startsWith('Dialogue:')) {
+          final parts = line.split(',');
           if (dialogueIndex < translatedDialogues.length) {
-            final parts = line.split(',');
-            final originalText = parts.sublist(9).join(',');
+            // Temos uma tradução para esta linha
             String translatedText = translatedDialogues[dialogueIndex].toString().replaceAll('\n', '\\N');
             final newLine = '${parts.sublist(0, 9).join(',')},$translatedText';
             newAssLines.add(newLine);
-            dialogueIndex++;
           } else {
-            newAssLines.add(line); // Mantém a linha original se não houver tradução
+            // Acabaram as traduções, insere uma linha de diálogo vazia
+            final newLine = '${parts.sublist(0, 9).join(',')},';
+            newAssLines.add(newLine);
           }
+          dialogueIndex++; // IMPORTANTE: Incrementar para *cada* linha de diálogo
         } else {
           newAssLines.add(line);
         }
@@ -256,21 +262,31 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         _progress = 0.9;
       });
       
-      final ffmpegResult = await Process.run('ffmpeg', [
-        '-y',
-        '-i',
-        _originalVideoPath!,
-        '-i',
-        translatedAssPath,
-        '-map', '0',      // Mapeia todos os streams do vídeo original (vídeo, áudio, etc.)
-        '-map', '-0:s',    // Desmapeia (remove) todas as legendas do vídeo original
-        '-map', '1',       // Mapeia o novo arquivo de legenda
-        '-c', 'copy',      // Copia os streams de vídeo e áudio sem re-codificar (rápido)
-        '-c:s', 'ass',     // Define o codec da nova legenda
-        '-metadata:s:s:0', 'language=por', // Define o idioma da nova legenda como Português
-        '-disposition:s:0', 'default',
-        _finalVideoPath!
-      ]);
+    final ffmpegResult = await Process.run('ffmpeg', [
+  '-y',
+  '-i', _originalVideoPath!,   // Input 0
+  '-i', translatedAssPath,     // Input 1
+
+  // Mapeamentos explícitos
+  '-map', '0:v',
+  '-map', '0:a',
+  '-map', '1:s',
+  '-map', '0:s?',
+
+  // Codecs
+  '-c:v', 'copy',
+  '-c:a', 'copy',
+  '-c:s', 'copy',
+  '-c:s:0', 'ass',             // Garante que a nova legenda é .ass
+
+  // Metadados (stream 2 geralmente é a nova legenda)
+  '-metadata:s:2', 'language=por',
+  '-metadata:s:2', 'title=PT-BR',
+  '-disposition:s:2', 'default',
+
+  _finalVideoPath!
+]);
+
 
       if (ffmpegResult.exitCode != 0) {
         throw Exception('FFmpeg falhou ao criar o vídeo final: ${ffmpegResult.stderr}');
@@ -364,4 +380,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     );
   }
 }
+
+
 
