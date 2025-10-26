@@ -40,6 +40,13 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
   String? _generatedJsonPath;
   String? _finalVideoPath;
   double _progress = 0.0;
+  final _jsonTextController = TextEditingController(); // Novo Controller
+
+  @override
+  void dispose() {
+    _jsonTextController.dispose(); // Limpa o controller
+    super.dispose();
+  }
 
   // Passo 1: Selecionar vídeo e extrair legendas para .ass e depois .json
   Future<void> _pickAndProcessVideo() async {
@@ -139,7 +146,11 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
 
         setState(() {
           _status =
-              'Arquivos gerados com sucesso!\n\nOriginal .ass: $originalAssFinalPath\nJSON para traduzir: $_generatedJsonPath\n\n...e use o próximo passo.';
+              'Arquivos gerados com sucesso!\n\n'
+              'Original .ass: $originalAssFinalPath\n'
+              'JSON para traduzir: $_generatedJsonPath\n\n'
+              'IMPORTANTE: Ao traduzir o JSON, mantenha as tags de estilo (ex: {\\pos(1,1)} ou {\\b1}) intactas, traduzindo apenas o texto.\n\n'
+              '...e use o próximo passo.';
           _progress = 0.7;
           _isLoading = false;
         });
@@ -176,7 +187,8 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
 
       if (result != null) {
         final String translatedJsonPath = result.files.single.path!;
-        await _rebuildAndEmbedSubtitles(translatedJsonPath);
+        // Chama a função que lê o arquivo e depois a de reconstrução
+        await _rebuildAndEmbedSubtitlesFromFile(translatedJsonPath);
       } else {
         setState(() {
           _status = 'Seleção de JSON cancelada.';
@@ -191,19 +203,63 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     }
   }
 
-  Future<void> _rebuildAndEmbedSubtitles(String translatedJsonPath) async {
+  // Nova Função (2b): Processar o JSON colado da caixa de texto
+  Future<void> _processPastedJson() async {
+    setState(() {
+      _isLoading = true;
+      _status = '4/5 - Lendo JSON colado e recriando legenda .ass...';
+      _progress = 0.75;
+    });
+
+    try {
+      final String pastedContent = _jsonTextController.text;
+      if (pastedContent.trim().isEmpty) {
+        throw Exception('A caixa de texto está vazia.');
+      }
+      
+      final List<dynamic> translatedDialogues = jsonDecode(pastedContent);
+      
+      // Chama a função de reconstrução central
+      await _performFinalRebuild(translatedDialogues);
+
+    } catch (e) {
+       setState(() {
+        _status = 'Erro ao processar o JSON colado: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Função refatorada: apenas lê o arquivo e chama a reconstrução
+  Future<void> _rebuildAndEmbedSubtitlesFromFile(String translatedJsonPath) async {
+    try {
+      setState(() { _status = '4/5 - Lendo JSON e recriando legenda .ass...'; });
+      _progress = 0.8;
+
+      final String translatedJsonContent = await File(translatedJsonPath).readAsString();
+      final List<dynamic> translatedDialogues = jsonDecode(translatedJsonContent);
+
+      // Chama a função de reconstrução central
+      await _performFinalRebuild(translatedDialogues);
+    } catch (e) {
+       setState(() {
+        _status = 'Erro ao ler ou processar o arquivo JSON: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Nova Função Central: Contém toda a lógica de reconstrução
+  Future<void> _performFinalRebuild(List<dynamic> translatedDialogues) async {
+    // Esta função assume que _isLoading já é true e _progress foi definido
     try {
       final Directory tempDir = await getApplicationDocumentsDirectory();
       final String baseName = p.basenameWithoutExtension(_originalVideoPath!);
       final String originalAssPath = '${tempDir.path}/$baseName.ass';
       final String translatedAssPath = '${tempDir.path}/${baseName}_translated.ass';
 
-      // Carrega as falas traduzidas do JSON
-      setState(() { _status = '4/5 - Lendo JSON e recriando legenda .ass...'; });
-      _progress = 0.8;
-
-      final String translatedJsonContent = await File(translatedJsonPath).readAsString();
-      final List<dynamic> translatedDialogues = jsonDecode(translatedJsonContent);
+      // Carrega as falas traduzidas (agora passadas como parâmetro)
+      setState(() { _status = '4/5 - Recriando legenda .ass...'; });
 
       // Recria o arquivo .ass com as falas traduzidas
       final File originalAssFile = File(originalAssPath);
@@ -211,7 +267,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       final List<String> newAssLines = [];
       bool inEventsSection = false;
       int dialogueIndex = 0;
-
+// ... (toda a lógica de 'for (final line in originalLines) ...' permanece a mesma) ...
       for (final line in originalLines) {
         if (line.trim() == '[Events]') {
           inEventsSection = true;
@@ -239,7 +295,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
 
       await File(translatedAssPath).writeAsString(newAssLines.join('\n'));
       
-      // Novo passo: Pedir ao usuário para selecionar a pasta de destino
+// ... (toda a lógica de 'FilePicker.platform.getDirectoryPath' permanece a mesma) ...
       setState(() { _status = 'Quase lá! Selecione onde salvar o vídeo final.'; });
       String? outputDirectory = await FilePicker.platform.getDirectoryPath(
         dialogTitle: 'Selecione a pasta para salvar o vídeo traduzido',
@@ -253,7 +309,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         });
         return;
       }
-      
+// ... (toda a lógica do comando FFmpeg permanece a mesma) ...
       _finalVideoPath = '$outputDirectory/${baseName}_traduzido.mkv';
 
       // Comando FFmpeg para criar o vídeo final
@@ -262,7 +318,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         _progress = 0.9;
       });
       
-    final ffmpegResult = await Process.run('ffmpeg', [
+     final ffmpegResult = await Process.run('ffmpeg', [
   '-y',
   '-i', _originalVideoPath!,   // Input 0
   '-i', translatedAssPath,     // Input 1
@@ -351,6 +407,37 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
                     ? null
                     : _pickTranslatedJsonAndFinish,
               ),
+              const SizedBox(height: 15),
+              const Text(
+                '...ou cole o conteúdo do JSON traduzido abaixo:',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _jsonTextController,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: 'Conteúdo do JSON traduzido',
+                  hintText: '[ "Olá", "Mundo", "Exemplo de JSON"... ]',
+                  filled: true,
+                  fillColor: Colors.black.withOpacity(0.1),
+                ),
+                enabled: !_isLoading && _originalVideoPath != null,
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  textStyle: const TextStyle(fontSize: 16),
+                  backgroundColor: Colors.green[700],
+                ),
+                icon: const Icon(Icons.paste),
+                label: const Text('2. Finalizar com Texto Colado'),
+                onPressed: _isLoading || _originalVideoPath == null
+                    ? null
+                    : _processPastedJson,
+              ),
               const SizedBox(height: 40),
               if (_isLoading)
                 Column(
@@ -380,6 +467,8 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     );
   }
 }
+
+
 
 
 
