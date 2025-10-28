@@ -27,6 +27,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
   String _status = 'Aguardando o início do processo...';
   bool _isLoading = false;
   String? _originalVideoPath;
+  String? _selectedPath;
   String? _generatedJsonPath;
   String? _finalVideoPath;
   double _progress = 0.0;
@@ -43,10 +44,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
   }
 
   Future<String> _openFolder(String path) async {
-    // Vamos corrigir a lógica de abertura de pasta
-    // Você está passando um ARQUIVO para `_openFolder` (`originalAssFinalPath`)
-    // Você deveria passar a PASTA que o contém: `p.dirname(originalAssFinalPath)`
-    // E o Process.run não deve ser "await" se você quer que o app continue
     final String folderPath = p.dirname(path);
 
     try {
@@ -68,6 +65,46 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       });
     }
     return folderPath;
+  }
+
+  Future<void>_pickVideo() async{
+    try{
+      
+    FilePickerResult? selectedVideo = await FilePicker.platform.pickFiles(
+        type: FileType.video,
+        allowedExtensions: ['mkv', 'mp4'],
+      );
+    setState(() {
+      _selectedPath = selectedVideo?.files.single.path;
+    });
+    }catch(e){
+      setState(() {
+        _status = 'Erro ao selecionar vídeo: $e';
+      });
+    }
+  }
+
+  Future<void>_pickFolder() async{
+    try{
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Selecione a pasta contendo os vídeos',
+      );
+      setState(() {
+        _selectedPath = selectedDirectory;
+      });
+    }catch(e){
+      setState(() {
+        _status = 'Erro ao selecionar pasta: $e';
+      });
+    }
+
+
+    
+  }
+
+  Future<void>_process() async{
+    _originalVideoPath = _selectedPath;
+
   }
 
   // Passo 1: Selecionar vídeo e extrair legendas para .ass e depois .json
@@ -608,28 +645,40 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            ElevatedButton.icon(
-                              
-                              label: const Text('Selecionar Arquivo de Vídeo'),
-                              
+
+                            Column(
+                              children: [
+                                IconButton(
                                icon: const Icon(
                                 Icons.file_open,
                                 size: 50,
                                 ),
-                              onPressed: (){},
+                              onPressed: _pickVideo,
                                 ),
+                                const Text("Arquivo"),
+                              ],
+                            ),
+                            
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
 
                             IconButton(
-                              tooltip: 'Selecionar Pasta de Vídeos',
                               icon: const Icon(
                                 Icons.folder_open,
                                 size: 50,
                               ),
-                              onPressed: (){}, 
+                              onPressed: _pickFolder, 
                               ),
+                              const Text("Pasta")
+                            ],),
                             ],
                         ),
-                        
+                        SelectableText(
+                          
+                          (_selectedPath==null)?"Caminho não definido": _selectedPath!
+                          
+                          ),
                         RadioListTile<ProcessingMode>(
                           title: const Text('Arquivo Único'),
                           value: ProcessingMode.singleFile,

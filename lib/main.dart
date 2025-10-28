@@ -1,10 +1,5 @@
-import 'dart:convert';
-import 'dart:io';
 import 'package:SubsTract/main_page.dart';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 void main() {
   runApp(const MyApp());
