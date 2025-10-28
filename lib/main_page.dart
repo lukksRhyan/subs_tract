@@ -605,7 +605,30 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
                               fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            ElevatedButton.icon(
+                              
+                              label: const Text('Selecionar Arquivo de Vídeo'),
+                              
+                               icon: const Icon(
+                                Icons.file_open,
+                                size: 50,
+                                ),
+                              onPressed: (){},
+                                ),
 
+                            IconButton(
+                              tooltip: 'Selecionar Pasta de Vídeos',
+                              icon: const Icon(
+                                Icons.folder_open,
+                                size: 50,
+                              ),
+                              onPressed: (){}, 
+                              ),
+                            ],
+                        ),
                         
                         RadioListTile<ProcessingMode>(
                           title: const Text('Arquivo Único'),
