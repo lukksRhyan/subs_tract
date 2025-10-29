@@ -76,6 +76,11 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       );
     setState(() {
       _selectedPath = selectedVideo?.files.single.path;
+        _status = 'Arquivo selecionado: $_selectedPath';
+        _isLoading = false;
+        _progress = 0.1;
+        _generatedJsonPath = null;
+        _finalVideoPath = null;
     });
     }catch(e){
       setState(() {
@@ -91,6 +96,11 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       );
       setState(() {
         _selectedPath = selectedDirectory;
+        _status = 'Pasta selecionada: $_selectedPath';
+        _isLoading = false;
+        _progress = 0.1;
+        _generatedJsonPath = null;
+        _finalVideoPath = null;
       });
     }catch(e){
       setState(() {
@@ -104,7 +114,13 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
 
   Future<void>_process() async{
     _originalVideoPath = _selectedPath;
-
+    setState((){
+       _isLoading = true;
+      _status = '1/5 - Selecionando arquivo de vídeo...';
+      _progress = 0.1;
+      _generatedJsonPath = null;
+      _finalVideoPath = null;
+    });
   }
 
   // Passo 1: Selecionar vídeo e extrair legendas para .ass e depois .json
