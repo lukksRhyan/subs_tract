@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:SubsTract/credit_footer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -43,11 +42,21 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _episodeController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
+  final TextEditingController _pasteController = TextEditingController(); 
 
   @override
   void initState() {
     super.initState();
     _checkFFmpeg();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _episodeController.dispose();
+    _apiKeyController.dispose();
+    _pasteController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkFFmpeg() async {
@@ -58,11 +67,22 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     }
   }
 
+  // Função de limpeza atualizada com sanitizador de tags ASS
   String _cleanJson(String text) {
     String cleaned = text.replaceAll('```json', '').replaceAll('```', '').trim();
     int start = cleaned.indexOf('[');
     int end = cleaned.lastIndexOf(']');
-    return (start != -1 && end != -1) ? cleaned.substring(start, end + 1) : cleaned;
+    
+    if (start != -1 && end != -1) {
+      cleaned = cleaned.substring(start, end + 1);
+    }
+    
+    // SANITIZADOR DE TAGS ASS: 
+    // Procura chaves seguidas de barra (ex: {\pos) que não estejam escapadas
+    // e adiciona a dupla barra (ex: {\\pos) para o JSON não quebrar.
+    cleaned = cleaned.replaceAll(RegExp(r'\{\\(?!\\)'), r'{\\\\');
+    
+    return cleaned;
   }
 
   Future<void> _pickVideo() async {
@@ -129,8 +149,11 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       await _extractToMemory();
       final model = GenerativeModel(model: 'models/gemini-2.5-flash', apiKey: _apiKey);
       
+      // PROMPT ATUALIZADO: Focado em escapar aspas e barras invertidas corretamente
       final prompt = "Translate this anime subtitle JSON array to Brazilian Portuguese. "
-          "Keep style tags like {\\pos(x,y)} and line breaks \\N. "
+          "CRITICAL RULES FOR JSON VALIDITY: "
+          "1. If the dialogue contains double quotes (\"), replace them with single quotes (') inside the text. "
+          "2. You MUST escape backslashes in ASS style tags. For example, {\\pos(x,y)} MUST be written as {\\\\pos(x,y)} in the JSON. "
           "Return ONLY the translated JSON array:\n\n"
           "${jsonEncode(_extractedDialogues)}";
 
@@ -141,13 +164,109 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       setState(() { _status = 'Tradução concluída!'; _isLoading = false; });
       _showSuccessDialog(result);
     } catch (e) {
-      setState(() { _status = 'Erro Gemini: $e'; _isLoading = false; });
+      setState(() { _status = 'Erro Gemini ou JSON inválido: $e'; _isLoading = false; });
     }
   }
 
-  Future<void> _generateFinalVideo(String translatedJsonStr) async {
-    Navigator.pop(context); 
+  void _copyPrompt() async {
+    setState(() => _isLoading = true);
+    await _extractToMemory();
     
+    // PROMPT ATUALIZADO (MANUAL)
+    final prompt = "Atue como tradutor de animes. Traduza este array JSON para PT-BR mantendo as tags de posição e estilo. "
+        "MUITO IMPORTANTE PARA NÃO QUEBRAR O JSON: "
+        "1. Substitua aspas duplas internas por aspas simples ('). "
+        "2. Você DEVE adicionar uma barra extra nas tags de estilo. Exemplo: {\\pos(x,y)} vira {\\\\pos(x,y)}. "
+        "Responda APENAS o JSON:\n\n${jsonEncode(_extractedDialogues)}";
+        
+    await Clipboard.setData(ClipboardData(text: prompt));
+    setState(() { _isLoading = false; _status = 'Prompt copiado!'; });
+    
+    _showPasteTranslatedJsonDialog();
+  }
+
+  Future<void> _saveJsonAndOpenFolder() async {
+    setState(() => _isLoading = true);
+    await _extractToMemory();
+    
+    String fileName = '${_titleController.text}_E${_episodeController.text}_original.json';
+    String? path = await FilePicker.platform.saveFile(
+      fileName: fileName,
+      bytes: utf8.encode(jsonEncode(_extractedDialogues)),
+    );
+
+    if (path != null) {
+      setState(() { _isLoading = false; _status = 'JSON salvo!'; });
+      final folder = p.dirname(path);
+      if (await canLaunchUrl(Uri.directory(folder))) {
+        await launchUrl(Uri.directory(folder));
+      }
+      
+      _showPasteTranslatedJsonDialog();
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showPasteTranslatedJsonDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Cole o JSON Traduzido'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: _pasteController,
+            maxLines: 10,
+            decoration: const InputDecoration(
+              hintText: 'Cole aqui o array JSON traduzido devolvido pela IA...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _pasteController.clear();
+              Navigator.pop(context);
+            },
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final pastedText = _pasteController.text;
+              if (pastedText.isNotEmpty) {
+                try {
+                  // A função _cleanJson agora fará o tratamento de aspas e barras invertidas
+                  final cleaned = _cleanJson(pastedText);
+                  jsonDecode(cleaned); 
+                  
+                  Navigator.pop(context);
+                  _pasteController.clear();
+                  
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    _generateFinalVideo(cleaned);
+                  });
+                  
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Formato JSON ainda inválido. Erro: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Validar e Gerar MKV'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _generateFinalVideo(String translatedJsonStr) async {
     try {
       setState(() {
         _isLoading = true;
@@ -239,47 +358,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     }
   }
 
-  void _copyPrompt() async {
-    setState(() => _isLoading = true);
-    await _extractToMemory();
-    final prompt = "Atue como tradutor de animes. Traduza este JSON para PT-BR mantendo as tags. "
-        "Responda apenas o JSON:\n\n${jsonEncode(_extractedDialogues)}";
-    await Clipboard.setData(ClipboardData(text: prompt));
-    setState(() { _isLoading = false; _status = 'Prompt copiado!'; });
-  }
-
-  void _copyPix() async{
-    final chavePix = "gbagamer27@gmail.com";
-    await Clipboard.setData(ClipboardData(text: chavePix));
-  }
-
-  void _copyAddress() async{
-    final cryptoAddress = "bc1qvhuaekwfkhp39cf3a2etewghxegfhvrjhe2yah";
-    await Clipboard.setData(ClipboardData(text: cryptoAddress));
-
-  }
-
-  Future<void> _saveJsonAndOpenFolder() async {
-    setState(() => _isLoading = true);
-    await _extractToMemory();
-    
-    String fileName = '${_titleController.text}_E${_episodeController.text}_original.json';
-    String? path = await FilePicker.platform.saveFile(
-      fileName: fileName,
-      bytes: utf8.encode(jsonEncode(_extractedDialogues)),
-    );
-
-    if (path != null) {
-      setState(() { _isLoading = false; _status = 'JSON salvo!'; });
-      final folder = p.dirname(path);
-      if (await canLaunchUrl(Uri.directory(folder))) {
-        await launchUrl(Uri.directory(folder));
-      }
-    } else {
-      setState(() => _isLoading = false);
-    }
-  }
-
   void _showSettings() {
     showDialog(
       context: context,
@@ -304,7 +382,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     );
   }
 
-  // Função nova para mostrar a Ajuda e os Créditos
   void _showHelpDialog() {
     showDialog(
       context: context,
@@ -314,7 +391,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children:  [
+            children: const [
               Text('Como usar:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               SizedBox(height: 10),
               Text('1. Selecione um vídeo MKV/MP4 com legenda embutida.'),
@@ -325,35 +402,16 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
               SizedBox(height: 5),
               Text('4. Escolha seu método de tradução:'),
               Text('   • Automático: Salve sua API Key do Gemini nas configurações e clique em "Traduzir Automaticamente".'),
-              Text('   • Manual: Copie o prompt ou salve o arquivo JSON para enviar para outra IA da sua escolha.'),
+              Text('   • Manual: Copie o prompt ou salve o arquivo JSON. Quando voltar ao app, cole o JSON traduzido.'),
               SizedBox(height: 5),
               Text('5. Finalize o processo aceitando a geração do vídeo MKV.'),
               SizedBox(height: 20),
               Divider(),
               SizedBox(height: 15),
-              Text('Agradecimentos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('Créditos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               SizedBox(height: 5),
               Text('SubsTract Pro v1.0.0'),
-              CreditFooter(),
-              SizedBox(height: 5),
-              Text('Se você pagou por esta aplicação no site dfg.com.br, muito obrigado e espero que goste!'),
-              SizedBox(height: 5),
-              Text('Caso você tenha obtido de forma gratúita, considere ajudar com qualquer quantia para a evolução deste projeto!'),
-              SizedBox(height: 5),
-              Row(children: [
-                OutlinedButton.icon(
-                      icon: const Icon(Icons.currency_exchange),
-                      label: const Text('Copiar Pix'),
-                      onPressed: _isLoading ? null : _copyPix,
-                    ),
-                    SizedBox(width: 10),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.currency_bitcoin),
-                      label: const Text('Copiar Endereço BTC'),
-                      onPressed: _isLoading ? null : _copyAddress,
-                    ),
-              ],)
-
+              Text('Desenvolvido por Rhyan'),
             ],
           ),
         ),
@@ -377,7 +435,10 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
           ElevatedButton(
-            onPressed: () => _generateFinalVideo(content), 
+            onPressed: () {
+               Navigator.pop(context); 
+               _generateFinalVideo(content); 
+            },
             child: const Text('Gerar MKV')
           ),
         ],
@@ -391,7 +452,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       appBar: AppBar(
         title: const Text('SubsTract Pro'),
         actions: [
-          // Botão de Ajuda adicionado aqui
           IconButton(
             icon: const Icon(Icons.help_outline), 
             tooltip: 'Ajuda e Créditos',
