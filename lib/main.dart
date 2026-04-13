@@ -340,19 +340,17 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
               SizedBox(height: 5),
               Text('Caso você tenha obtido de forma gratúita, considere ajudar com qualquer quantia para a evolução deste projeto!'),
               SizedBox(height: 5),
-              Text('Caso você tenha obtido de forma gratúita, considere ajudar com qualquer quantia para a evolução deste projeto!'),
-              SizedBox(height: 5),
               Row(children: [
                 OutlinedButton.icon(
                       icon: const Icon(Icons.currency_exchange),
                       label: const Text('Copiar Pix'),
-                      onPressed: _isLoading ? null : _copyPrompt,
+                      onPressed: _isLoading ? null : _copyPix,
                     ),
                     SizedBox(width: 10),
                     OutlinedButton.icon(
                       icon: const Icon(Icons.currency_bitcoin),
                       label: const Text('Copiar Endereço BTC'),
-                      onPressed: _isLoading ? null : _copyPrompt,
+                      onPressed: _isLoading ? null : _copyAddress,
                     ),
               ],)
 
