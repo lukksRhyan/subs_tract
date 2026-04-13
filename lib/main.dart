@@ -1,26 +1,23 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'models/video_metadata.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Assistente de Tradução de Legendas',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-        brightness: Brightness.dark,
-      ),
+      title: 'SubsTract Pro',
+      theme: ThemeData(brightness: Brightness.dark, primaryColor: Colors.blueAccent),
       home: const SubtitleTranslatorPage(),
     );
   }
@@ -28,447 +25,370 @@ class MyApp extends StatelessWidget {
 
 class SubtitleTranslatorPage extends StatefulWidget {
   const SubtitleTranslatorPage({super.key});
-
   @override
   State<SubtitleTranslatorPage> createState() => _SubtitleTranslatorPageState();
 }
 
 class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
-  String _status = 'Aguardando o início do processo...';
+  String _status = 'Selecione um vídeo para começar.';
   bool _isLoading = false;
-  String? _originalVideoPath;
-  String? _generatedJsonPath;
-  String? _finalVideoPath;
-  double _progress = 0.0;
-  final _jsonTextController = TextEditingController(); // Novo Controller
+  String _apiKey = '';
+  
+  VideoMetadata? _currentMetadata;
+  List<SubtitleTrack> _availableTracks = [];
+  SubtitleTrack? _selectedTrack;
+  List<String> _extractedDialogues = [];
+
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _episodeController = TextEditingController();
+  final TextEditingController _apiKeyController = TextEditingController();
 
   @override
-  void dispose() {
-    _jsonTextController.dispose(); // Limpa o controller
-    super.dispose();
+  void initState() {
+    super.initState();
+    _checkFFmpeg();
   }
 
-  // Passo 1: Selecionar vídeo e extrair legendas para .ass e depois .json
-  Future<void> _pickAndProcessVideo() async {
-    setState(() {
-      _isLoading = true;
-      _status = '1/5 - Selecionando arquivo de vídeo...';
-      _progress = 0.1;
-      _generatedJsonPath = null;
-      _finalVideoPath = null;
-    });
-
+  Future<void> _checkFFmpeg() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.video,
-        allowedExtensions: ['mkv', 'mp4'],
-      );
+      await Process.run('ffmpeg', ['-version']);
+    } catch (_) {
+      setState(() => _status = 'Erro: FFmpeg não detectado no sistema.');
+    }
+  }
 
-      if (result != null) {
-        _originalVideoPath = result.files.single.path!;
-        final String videoDir = p.dirname(_originalVideoPath!);
-        final String baseName = p.basenameWithoutExtension(_originalVideoPath!);
-        final Directory tempDir = await getApplicationDocumentsDirectory();
-        final String assOutputPath = '${tempDir.path}/$baseName.ass';
-        final String originalAssFinalPath = '$videoDir/${baseName}_original_extraida.ass'; // Novo: Caminho para salvar o .ass original
-        _generatedJsonPath = '$videoDir/${baseName}_legendas.json';
+  String _cleanJson(String text) {
+    String cleaned = text.replaceAll('```json', '').replaceAll('```', '').trim();
+    int start = cleaned.indexOf('[');
+    int end = cleaned.lastIndexOf(']');
+    return (start != -1 && end != -1) ? cleaned.substring(start, end + 1) : cleaned;
+  }
 
-        // Comando FFmpeg para extrair a primeira trilha de legenda em inglês
-        setState(() {
-          _status = '2/5 - Extraindo legenda (.ass) com FFmpeg...';
-          _progress = 0.25;
-        });
-
-        // Tenta extrair a legenda em inglês, se falhar, extrai a primeira disponível.
-        var ffmpegResult = await Process.run('ffmpeg', [
-          '-y',
-          '-i',
-          _originalVideoPath!,
-          '-map',
-          '0:s:m:language:eng?','-c:s',
-          'ass',
-          assOutputPath
-        ]);
-        
-        if (ffmpegResult.exitCode != 0) {
-           // Se não encontrar legenda em inglês, tenta a primeira trilha de legenda
-           ffmpegResult = await Process.run('ffmpeg', [
-            '-y',
-            '-i',
-            _originalVideoPath!,
-            '-map',
-            '0:s:0?',
-            '-c:s',
-            'ass',
-            assOutputPath
-          ]);
-        }
-
-        if (ffmpegResult.exitCode != 0) {
-          throw Exception('FFmpeg falhou ao extrair a legenda: ${ffmpegResult.stderr}');
-        }
-
-        // Ler o arquivo .ass e extrair apenas as falas para o JSON
-        setState(() {
-          _status = '3/5 - Processando .ass e gerando .json...';
-          _progress = 0.5;
-        });
-
-        final File assFile = File(assOutputPath);
-        final List<String> lines = await assFile.readAsLines();
-        final List<String> dialogues = [];
-        bool inEventsSection = false;
-
-        for (final line in lines) {
-          if (line.trim() == '[Events]') {
-            inEventsSection = true;
-            continue;
-          }
-          if (inEventsSection && line.startsWith('Dialogue:')) {
-            // Ex: Dialogue: 0,0:00:01.81,0:00:03.54,Default,,0,0,0,,{\pos(480,517)}Hello, world.
-            final parts = line.split(',');
-            if (parts.length >= 10) {
-              final text = parts.sublist(9).join(',');
-              dialogues.add(text.replaceAll('\\N', '\n'));
-            }
-          }
-        }
-
-        if (dialogues.isEmpty) {
-          throw Exception('Nenhuma fala encontrada no arquivo de legenda .ass.');
-        }
-
-        final File jsonFile = File(_generatedJsonPath!);
-        await jsonFile.writeAsString(jsonEncode(dialogues));
-
-        // Novo: Salva uma cópia do .ass original extraído para o usuário
-        await File(assOutputPath).copy(originalAssFinalPath);
-
-        setState(() {
-          _status =
-              'Arquivos gerados com sucesso!\n\n'
-              'Original .ass: $originalAssFinalPath\n'
-              'JSON para traduzir: $_generatedJsonPath\n\n'
-              'IMPORTANTE: Ao traduzir o JSON, mantenha as tags de estilo (ex: {\\pos(1,1)} ou {\\b1}) intactas, traduzindo apenas o texto.\n\n'
-              '...e use o próximo passo.';
-          _progress = 0.7;
-          _isLoading = false;
-        });
-      } else {
-        // O usuário cancelou
-        setState(() {
-          _status = 'Seleção de vídeo cancelada.';
-          _isLoading = false;
-          _progress = 0.0;
-        });
-      }
-    } catch (e) {
+  Future<void> _pickVideo() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.video);
+    if (result != null) {
+      final path = result.files.single.path!;
+      final meta = VideoMetadata.fromPath(path);
       setState(() {
-        _status = 'Erro no Passo 1: $e';
-        _isLoading = false;
-        _progress = 0.0;
+        _currentMetadata = meta;
+        _titleController.text = meta.title;
+        _episodeController.text = meta.episode;
+        _isLoading = true;
       });
+      await _analyzeTracks(path);
     }
   }
 
-  // Passo 2: Pegar o JSON traduzido e remontar o vídeo
-  Future<void> _pickTranslatedJsonAndFinish() async {
-    setState(() {
-      _isLoading = true;
-      _status = 'Selecionando arquivo .json traduzido...';
-      _progress = 0.75;
-    });
-
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-      );
-
-      if (result != null) {
-        final String translatedJsonPath = result.files.single.path!;
-        // Chama a função que lê o arquivo e depois a de reconstrução
-        await _rebuildAndEmbedSubtitlesFromFile(translatedJsonPath);
-      } else {
-        setState(() {
-          _status = 'Seleção de JSON cancelada.';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
+  Future<void> _analyzeTracks(String path) async {
+    final result = await Process.run('ffprobe', [
+      '-v', 'quiet', '-print_format', 'json', '-show_streams', '-select_streams', 's', path
+    ]);
+    if (result.exitCode == 0) {
+      final streams = jsonDecode(result.stdout)['streams'] as List;
       setState(() {
-        _status = 'Erro no Passo 2: $e';
+        _availableTracks = streams.map((s) => SubtitleTrack(
+          index: s['index'],
+          language: s['tags']?['language'] ?? 'und',
+          title: s['tags']?['title'],
+        )).toList();
+        if (_availableTracks.isNotEmpty) _selectedTrack = _availableTracks.first;
         _isLoading = false;
+        _status = 'Vídeo carregado.';
       });
     }
   }
 
-  // Nova Função (2b): Processar o JSON colado da caixa de texto
-  Future<void> _processPastedJson() async {
-    setState(() {
-      _isLoading = true;
-      _status = '4/5 - Lendo JSON colado e recriando legenda .ass...';
-      _progress = 0.75;
-    });
+  Future<void> _extractToMemory() async {
+    if (_currentMetadata == null || _selectedTrack == null) return;
+    final tempDir = await getTemporaryDirectory();
+    final assPath = p.join(tempDir.path, 'temp.ass');
 
-    try {
-      final String pastedContent = _jsonTextController.text;
-      if (pastedContent.trim().isEmpty) {
-        throw Exception('A caixa de texto está vazia.');
+    await Process.run('ffmpeg', [
+      '-y', '-i', _currentMetadata!.filePath,
+      '-map', '0:${_selectedTrack!.index}', '-c:s', 'ass', assPath
+    ]);
+
+    final lines = await File(assPath).readAsLines();
+    _extractedDialogues = [];
+    bool inEvents = false;
+    for (var line in lines) {
+      if (line.trim() == '[Events]') { inEvents = true; continue; }
+      if (inEvents && line.startsWith('Dialogue:')) {
+        final parts = line.split(',');
+        if (parts.length >= 10) _extractedDialogues.add(parts.sublist(9).join(',').replaceAll('\\N', '\n'));
       }
-      
-      final List<dynamic> translatedDialogues = jsonDecode(pastedContent);
-      
-      // Chama a função de reconstrução central
-      await _performFinalRebuild(translatedDialogues);
-
-    } catch (e) {
-       setState(() {
-        _status = 'Erro ao processar o JSON colado: $e';
-        _isLoading = false;
-      });
     }
   }
 
-  // Função refatorada: apenas lê o arquivo e chama a reconstrução
-  Future<void> _rebuildAndEmbedSubtitlesFromFile(String translatedJsonPath) async {
+  Future<void> _translateWithGemini() async {
+    if (_apiKey.isEmpty) { _showSettings(); return; }
+    setState(() { _isLoading = true; _status = 'Extraindo e traduzindo...'; });
+
     try {
-      setState(() { _status = '4/5 - Lendo JSON e recriando legenda .ass...'; });
-      _progress = 0.8;
+      await _extractToMemory();
+      // Modelo corrigido para a versão correta
+      final model = GenerativeModel(model: 'models/gemini-2.5-flash', apiKey: _apiKey);
+      
+      final prompt = "Translate this anime subtitle JSON array to Brazilian Portuguese. "
+          "Keep style tags like {\\pos(x,y)} and line breaks \\N. "
+          "Return ONLY the translated JSON array:\n\n"
+          "${jsonEncode(_extractedDialogues)}";
 
-      final String translatedJsonContent = await File(translatedJsonPath).readAsString();
-      final List<dynamic> translatedDialogues = jsonDecode(translatedJsonContent);
-
-      // Chama a função de reconstrução central
-      await _performFinalRebuild(translatedDialogues);
+      final response = await model.generateContent([Content.text(prompt)]);
+      final result = _cleanJson(response.text ?? '');
+      
+      jsonDecode(result); 
+      setState(() { _status = 'Tradução concluída!'; _isLoading = false; });
+      _showSuccessDialog(result);
     } catch (e) {
-       setState(() {
-        _status = 'Erro ao ler ou processar o arquivo JSON: $e';
-        _isLoading = false;
-      });
+      setState(() { _status = 'Erro Gemini: $e'; _isLoading = false; });
     }
   }
 
-  // Nova Função Central: Contém toda a lógica de reconstrução
-  Future<void> _performFinalRebuild(List<dynamic> translatedDialogues) async {
-    // Esta função assume que _isLoading já é true e _progress foi definido
+  Future<void> _generateFinalVideo(String translatedJsonStr) async {
+    Navigator.pop(context); 
+    
     try {
-      final Directory tempDir = await getApplicationDocumentsDirectory();
-      final String baseName = p.basenameWithoutExtension(_originalVideoPath!);
-      final String originalAssPath = '${tempDir.path}/$baseName.ass';
-      final String translatedAssPath = '${tempDir.path}/${baseName}_translated.ass';
+      setState(() {
+        _isLoading = true;
+        _status = 'Selecione a pasta para salvar o vídeo...';
+      });
 
-      // Carrega as falas traduzidas (agora passadas como parâmetro)
-      setState(() { _status = '4/5 - Recriando legenda .ass...'; });
+      String? outputDirectory = await FilePicker.platform.getDirectoryPath();
+      if (outputDirectory == null) {
+        setState(() {
+          _isLoading = false;
+          _status = 'Operação cancelada (pasta não selecionada).';
+        });
+        return;
+      }
 
-      // Recria o arquivo .ass com as falas traduzidas
+      setState(() => _status = 'Criando arquivo .ass traduzido...');
+
+      final List<dynamic> translatedDialogues = jsonDecode(translatedJsonStr);
+      final tempDir = await getTemporaryDirectory();
+      final String originalAssPath = p.join(tempDir.path, 'temp.ass');
+      final String translatedAssPath = p.join(tempDir.path, 'temp_translated.ass');
+
       final File originalAssFile = File(originalAssPath);
       final List<String> originalLines = await originalAssFile.readAsLines();
       final List<String> newAssLines = [];
       bool inEventsSection = false;
       int dialogueIndex = 0;
-// ... (toda a lógica de 'for (final line in originalLines) ...' permanece a mesma) ...
+
       for (final line in originalLines) {
         if (line.trim() == '[Events]') {
           inEventsSection = true;
           newAssLines.add(line);
           continue;
         }
-
         if (inEventsSection && line.startsWith('Dialogue:')) {
           final parts = line.split(',');
           if (dialogueIndex < translatedDialogues.length) {
-            // Temos uma tradução para esta linha
-            String translatedText = translatedDialogues[dialogueIndex].toString().replaceAll('\n', '\\N');
-            final newLine = '${parts.sublist(0, 9).join(',')},$translatedText';
-            newAssLines.add(newLine);
+            String text = translatedDialogues[dialogueIndex].toString().replaceAll('\n', '\\N');
+            newAssLines.add('${parts.sublist(0, 9).join(',')},$text');
           } else {
-            // Acabaram as traduções, insere uma linha de diálogo vazia
-            final newLine = '${parts.sublist(0, 9).join(',')},';
-            newAssLines.add(newLine);
+            newAssLines.add('${parts.sublist(0, 9).join(',')},');
           }
-          dialogueIndex++; // IMPORTANTE: Incrementar para *cada* linha de diálogo
+          dialogueIndex++;
         } else {
           newAssLines.add(line);
         }
       }
-
-      await File(translatedAssPath).writeAsString(newAssLines.join('\n'));
       
-// ... (toda a lógica de 'FilePicker.platform.getDirectoryPath' permanece a mesma) ...
-      setState(() { _status = 'Quase lá! Selecione onde salvar o vídeo final.'; });
-      String? outputDirectory = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: 'Selecione a pasta para salvar o vídeo traduzido',
-      );
+      await File(translatedAssPath).writeAsString(newAssLines.join('\n'));
 
-      if (outputDirectory == null) {
-        // O usuário cancelou a seleção da pasta
+      final String titleStr = _titleController.text.isNotEmpty ? _titleController.text : 'Traduzido';
+      final String epStr = _episodeController.text.isNotEmpty ? '_E${_episodeController.text}' : '';
+      final String finalVideoPath = p.join(outputDirectory, '${titleStr}${epStr}_PTBR.mkv');
+
+      setState(() => _status = 'Gerando MKV final... Isso pode demorar, não feche o app.');
+
+      // FFmpeg com sintaxe corrigida e suporte a cópia de fontes anexadas
+      final result = await Process.run('ffmpeg', [
+        '-y',
+        '-i', _currentMetadata!.filePath,
+        '-i', translatedAssPath,
+        '-map', '0:v',     // Copia vídeo original
+        '-map', '0:a',     // Copia áudio original
+        '-map', '1:s',     // Adiciona a nova legenda como primeiro stream de legenda
+        '-map', '0:s?',    // Copia as legendas antigas em seguida
+        '-map', '0:t?',    // IMPORTANTÍSSIMO: Copia fontes e anexos originais
+        '-c:v', 'copy',
+        '-c:a', 'copy',
+        '-c:s', 'copy',
+        '-c:t', 'copy',
+        '-metadata:s:0', 'language=por', // Corrigido de s:s:0 para s:0
+        '-metadata:s:0', 'title=PT-BR',
+        '-disposition:s:0', 'default',
+        finalVideoPath
+      ]);
+
+      if (result.exitCode == 0) {
         setState(() {
-          _status = 'Operação cancelada. Você não selecionou uma pasta de destino.';
+          _status = 'Sucesso!\nVídeo salvo em:\n$finalVideoPath';
           _isLoading = false;
         });
-        return;
+      } else {
+        throw Exception(result.stderr);
       }
-// ... (toda a lógica do comando FFmpeg permanece a mesma) ...
-      _finalVideoPath = '$outputDirectory/${baseName}_traduzido.mkv';
-
-      // Comando FFmpeg para criar o vídeo final
-      setState(() {
-        _status = '5/5 - Criando o vídeo final com a nova legenda... Isso pode demorar.';
-        _progress = 0.9;
-      });
-      
-     final ffmpegResult = await Process.run('ffmpeg', [
-  '-y',
-  '-i', _originalVideoPath!,   // Input 0
-  '-i', translatedAssPath,     // Input 1
-
-  // Mapeamentos explícitos
-  '-map', '0:v',
-  '-map', '0:a',
-  '-map', '1:s',
-  '-map', '0:s?',
-
-  // Codecs
-  '-c:v', 'copy',
-  '-c:a', 'copy',
-  '-c:s', 'copy',
-  '-c:s:0', 'ass',             // Garante que a nova legenda é .ass
-
-  // Metadados (stream 2 geralmente é a nova legenda)
-  '-metadata:s:2', 'language=por',
-  '-metadata:s:2', 'title=PT-BR',
-  '-disposition:s:2', 'default',
-
-  _finalVideoPath!
-]);
-
-
-      if (ffmpegResult.exitCode != 0) {
-        throw Exception('FFmpeg falhou ao criar o vídeo final: ${ffmpegResult.stderr}');
-      }
-
-      setState(() {
-        _status = 'Processo concluído com sucesso!\n\nVídeo final salvo em:\n$_finalVideoPath';
-        _isLoading = false;
-        _progress = 1.0;
-      });
-
     } catch (e) {
-       setState(() {
-        _status = 'Erro ao reconstruir o vídeo: $e';
+      setState(() {
+        _status = 'Erro ao gerar vídeo: $e';
         _isLoading = false;
       });
     }
   }
 
+  void _copyPrompt() async {
+    setState(() => _isLoading = true);
+    await _extractToMemory();
+    final prompt = "Atue como tradutor de animes. Traduza este JSON para PT-BR mantendo as tags. "
+        "Responda apenas o JSON:\n\n${jsonEncode(_extractedDialogues)}";
+    await Clipboard.setData(ClipboardData(text: prompt));
+    setState(() { _isLoading = false; _status = 'Prompt copiado!'; });
+  }
+
+  Future<void> _saveJsonAndOpenFolder() async {
+    setState(() => _isLoading = true);
+    await _extractToMemory();
+    
+    String fileName = '${_titleController.text}_E${_episodeController.text}_original.json';
+    String? path = await FilePicker.platform.saveFile(
+      fileName: fileName,
+      bytes: utf8.encode(jsonEncode(_extractedDialogues)),
+    );
+
+    if (path != null) {
+      setState(() { _isLoading = false; _status = 'JSON salvo!'; });
+      final folder = p.dirname(path);
+      if (await canLaunchUrl(Uri.directory(folder))) {
+        await launchUrl(Uri.directory(folder));
+      }
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSettings() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Configuração da API'),
+        content: TextField(
+          controller: _apiKeyController,
+          decoration: const InputDecoration(labelText: 'Gemini API Key'),
+          obscureText: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Voltar')),
+          ElevatedButton(
+            onPressed: () {
+              setState(() => _apiKey = _apiKeyController.text);
+              Navigator.pop(context);
+            },
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSuccessDialog(String content) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, 
+      builder: (context) => AlertDialog(
+        title: const Text('Legendas Traduzidas'),
+        content: const Text('A tradução foi concluída com sucesso pela IA. Deseja iniciar a geração do vídeo MKV agora?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => _generateFinalVideo(content), 
+            child: const Text('Gerar MKV')
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Assistente de Tradução de Legendas'),
+        title: const Text('SubsTract Pro'),
+        actions: [IconButton(icon: const Icon(Icons.vpn_key), onPressed: _showSettings)],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              const Text(
-                'Bem-vindo!',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Siga os passos para traduzir a legenda do seu vídeo.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 40),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  textStyle: const TextStyle(fontSize: 16),
-                ),
-                icon: const Icon(Icons.video_file),
-                label: const Text('1. Selecionar Vídeo e Extrair Legenda'),
-                onPressed: _isLoading ? null : _pickAndProcessVideo,
-              ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ElevatedButton.icon(
+              icon: const Icon(Icons.video_library),
+              label: const Text('Selecionar Vídeo'),
+              onPressed: _isLoading ? null : _pickVideo,
+            ),
+            if (_currentMetadata != null) ...[
               const SizedBox(height: 20),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  textStyle: const TextStyle(fontSize: 16),
-                ),
-                icon: const Icon(Icons.translate),
-                label: const Text('2. Enviar JSON Traduzido e Finalizar'),
-                onPressed: _isLoading || _originalVideoPath == null
-                    ? null
-                    : _pickTranslatedJsonAndFinish,
+              DropdownButtonFormField<SubtitleTrack>(
+                value: _selectedTrack,
+                items: _availableTracks.map((t) => DropdownMenuItem(value: t, child: Text(t.toString()))).toList(),
+                onChanged: (v) => setState(() => _selectedTrack = v),
+                decoration: const InputDecoration(labelText: 'Trilha de Legenda'),
               ),
               const SizedBox(height: 15),
-              const Text(
-                '...ou cole o conteúdo do JSON traduzido abaixo:',
-                style: TextStyle(fontSize: 14),
+              Row(
+                children: [
+                  Expanded(flex: 3, child: TextField(controller: _titleController, decoration: const InputDecoration(labelText: 'Título'))),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextField(controller: _episodeController, decoration: const InputDecoration(labelText: 'Ep'))),
+                ],
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _jsonTextController,
-                maxLines: 5,
-                decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  labelText: 'Conteúdo do JSON traduzido',
-                  hintText: '[ "Olá", "Mundo", "Exemplo de JSON"... ]',
-                  filled: true,
-                  fillColor: Colors.black.withOpacity(0.1),
-                ),
-                enabled: !_isLoading && _originalVideoPath != null,
-              ),
+              const SizedBox(height: 30),
+              const Text('OPÇÕES', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueAccent)),
               const SizedBox(height: 10),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  textStyle: const TextStyle(fontSize: 16),
-                  backgroundColor: Colors.green[700],
-                ),
-                icon: const Icon(Icons.paste),
-                label: const Text('2. Finalizar com Texto Colado'),
-                onPressed: _isLoading || _originalVideoPath == null
-                    ? null
-                    : _processPastedJson,
+                icon: const Icon(Icons.auto_fix_high),
+                label: const Text('Traduzir Automaticamente (API)'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
+                onPressed: _isLoading ? null : _translateWithGemini,
               ),
-              const SizedBox(height: 40),
-              if (_isLoading)
-                Column(
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 20),
-                    LinearProgressIndicator(value: _progress),
-                    const SizedBox(height: 10),
-                  ],
-                ),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  _status,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
-                ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.copy_all),
+                      label: const Text('Copiar Prompt'),
+                      onPressed: _isLoading ? null : _copyPrompt,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text('Salvar e Abrir Pasta'),
+                      onPressed: _isLoading ? null : _saveJsonAndOpenFolder,
+                    ),
+                  ),
+                ],
               ),
             ],
-          ),
+            const SizedBox(height: 40),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+              child: Column(
+                children: [
+                  if (_isLoading) const Padding(padding: EdgeInsets.only(bottom: 15), child: CircularProgressIndicator()),
+                  SelectableText(_status, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic)),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
-
-
-
-
-
