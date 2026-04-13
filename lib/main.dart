@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:SubsTract/credit_footer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -126,7 +127,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
 
     try {
       await _extractToMemory();
-      // Modelo corrigido para a versão correta
       final model = GenerativeModel(model: 'models/gemini-2.5-flash', apiKey: _apiKey);
       
       final prompt = "Translate this anime subtitle JSON array to Brazilian Portuguese. "
@@ -204,21 +204,20 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
 
       setState(() => _status = 'Gerando MKV final... Isso pode demorar, não feche o app.');
 
-      // FFmpeg com sintaxe corrigida e suporte a cópia de fontes anexadas
       final result = await Process.run('ffmpeg', [
         '-y',
         '-i', _currentMetadata!.filePath,
         '-i', translatedAssPath,
-        '-map', '0:v',     // Copia vídeo original
-        '-map', '0:a',     // Copia áudio original
-        '-map', '1:s',     // Adiciona a nova legenda como primeiro stream de legenda
-        '-map', '0:s?',    // Copia as legendas antigas em seguida
-        '-map', '0:t?',    // IMPORTANTÍSSIMO: Copia fontes e anexos originais
+        '-map', '0:v',     
+        '-map', '0:a',     
+        '-map', '1:s',     
+        '-map', '0:s?',    
+        '-map', '0:t?',    
         '-c:v', 'copy',
         '-c:a', 'copy',
         '-c:s', 'copy',
         '-c:t', 'copy',
-        '-metadata:s:0', 'language=por', // Corrigido de s:s:0 para s:0
+        '-metadata:s:0', 'language=por',
         '-metadata:s:0', 'title=PT-BR',
         '-disposition:s:0', 'default',
         finalVideoPath
@@ -247,6 +246,17 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         "Responda apenas o JSON:\n\n${jsonEncode(_extractedDialogues)}";
     await Clipboard.setData(ClipboardData(text: prompt));
     setState(() { _isLoading = false; _status = 'Prompt copiado!'; });
+  }
+
+  void _copyPix() async{
+    final chavePix = "gbagamer27@gmail.com";
+    await Clipboard.setData(ClipboardData(text: chavePix));
+  }
+
+  void _copyAddress() async{
+    final cryptoAddress = "bc1qvhuaekwfkhp39cf3a2etewghxegfhvrjhe2yah";
+    await Clipboard.setData(ClipboardData(text: cryptoAddress));
+
   }
 
   Future<void> _saveJsonAndOpenFolder() async {
@@ -294,6 +304,71 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     );
   }
 
+  // Função nova para mostrar a Ajuda e os Créditos
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ajuda e Créditos'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children:  [
+              Text('Como usar:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              SizedBox(height: 10),
+              Text('1. Selecione um vídeo MKV/MP4 com legenda embutida.'),
+              SizedBox(height: 5),
+              Text('2. Escolha a trilha de legenda que deseja traduzir.'),
+              SizedBox(height: 5),
+              Text('3. Ajuste o título e o número do episódio, se necessário.'),
+              SizedBox(height: 5),
+              Text('4. Escolha seu método de tradução:'),
+              Text('   • Automático: Salve sua API Key do Gemini nas configurações e clique em "Traduzir Automaticamente".'),
+              Text('   • Manual: Copie o prompt ou salve o arquivo JSON para enviar para outra IA da sua escolha.'),
+              SizedBox(height: 5),
+              Text('5. Finalize o processo aceitando a geração do vídeo MKV.'),
+              SizedBox(height: 20),
+              Divider(),
+              SizedBox(height: 15),
+              Text('Agradecimentos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              SizedBox(height: 5),
+              Text('SubsTract Pro v1.0.0'),
+              CreditFooter(),
+              SizedBox(height: 5),
+              Text('Se você pagou por esta aplicação no site dfg.com.br, muito obrigado e espero que goste!'),
+              SizedBox(height: 5),
+              Text('Caso você tenha obtido de forma gratúita, considere ajudar com qualquer quantia para a evolução deste projeto!'),
+              SizedBox(height: 5),
+              Text('Caso você tenha obtido de forma gratúita, considere ajudar com qualquer quantia para a evolução deste projeto!'),
+              SizedBox(height: 5),
+              Row(children: [
+                OutlinedButton.icon(
+                      icon: const Icon(Icons.currency_exchange),
+                      label: const Text('Copiar Pix'),
+                      onPressed: _isLoading ? null : _copyPrompt,
+                    ),
+                    SizedBox(width: 10),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.currency_bitcoin),
+                      label: const Text('Copiar Endereço BTC'),
+                      onPressed: _isLoading ? null : _copyPrompt,
+                    ),
+              ],)
+
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showSuccessDialog(String content) {
     showDialog(
       context: context,
@@ -317,7 +392,19 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('SubsTract Pro'),
-        actions: [IconButton(icon: const Icon(Icons.vpn_key), onPressed: _showSettings)],
+        actions: [
+          // Botão de Ajuda adicionado aqui
+          IconButton(
+            icon: const Icon(Icons.help_outline), 
+            tooltip: 'Ajuda e Créditos',
+            onPressed: _showHelpDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.vpn_key), 
+            tooltip: 'Configurações API',
+            onPressed: _showSettings,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
