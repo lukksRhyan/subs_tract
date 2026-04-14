@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:SubsTract/credit_footer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -266,6 +267,17 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     );
   }
 
+  void _copyPix() async{
+    final chavePix = "gbagamer27@gmail.com";
+    await Clipboard.setData(ClipboardData(text: chavePix));
+  }
+
+  void _copyAddress() async{
+    final cryptoAddress = "bc1qvhuaekwfkhp39cf3a2etewghxegfhvrjhe2yah";
+    await Clipboard.setData(ClipboardData(text: cryptoAddress));
+
+  }
+
   Future<void> _generateFinalVideo(String translatedJsonStr) async {
     try {
       setState(() {
@@ -391,7 +403,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: const [
+            children: [
               Text('Como usar:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               SizedBox(height: 10),
               Text('1. Selecione um vídeo MKV/MP4 com legenda embutida.'),
@@ -411,7 +423,22 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
               Text('Créditos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               SizedBox(height: 5),
               Text('SubsTract Pro v1.0.0'),
-              Text('Desenvolvido por Rhyan'),
+              CreditFooter(),
+              SizedBox(height: 5),
+              Row(children: [
+                OutlinedButton.icon(
+                      icon: const Icon(Icons.currency_exchange),
+                      label: const Text('Copiar Pix'),
+                      onPressed:  _copyPix,
+                    ),
+                    SizedBox(width: 10),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.currency_bitcoin),
+                      label: const Text('Copiar Endereço'),
+                      onPressed:  _copyAddress,
+                    ),
+              ],)
+
             ],
           ),
         ),

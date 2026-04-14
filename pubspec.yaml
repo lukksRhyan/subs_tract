@@ -39,6 +39,7 @@ dependencies:
   path_provider: ^2.1.3
   google_generative_ai: ^0.4.7
   url_launcher: ^6.3.2
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   flutter_test:
@@ -92,3 +93,15 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_launcher_icons:
+  # Configuração para outras plataformas (Android e iOS)
+  android: "launcher_icon"
+  ios: true
+
+  # Caminho para o seu arquivo de ícone principal
+  image_path: "assets/favicon.png"
+
+  # Configuração específica para Windows
+  windows:
+    generate: true
+    icon_path: "assets/favicon.ico"
