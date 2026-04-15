@@ -1,0 +1,68 @@
+📝 Sugestão de Descrição para o Marketplace
+Título do Produto:
+SubsTract Pro - Tradução Automática e em Lote para Legendas de Vídeos
+
+Subtítulo (Headline):
+Automatize a tradução das suas séries e animes. Extraia, traduza com Inteligência Artificial e remonte seus vídeos (MKV/MP4) em poucos cliques, preservando toda a qualidade original!
+
+Descrição Curta:
+Cansado de perder horas extraindo legendas, traduzindo falas manualmente e tentando sincronizar tudo de volta? O SubsTract Pro é a ferramenta definitiva para fansubbers, editores e entusiastas. Com integração nativa à IA do Gemini, ele lê pastas inteiras, traduzine legendas preservando as formatações originais (tags ASS) e gera vídeos MKV prontinhos para assistir.
+
+Descrição Completa:
+Seja para assistir aquele anime que ainda não saiu no seu idioma ou para agilizar o trabalho do seu grupo de tradução, o SubsTract Pro foi construído para eliminar o trabalho braçal. Esqueça linhas de comando complexas e arquivos corrompidos.
+
+🚀 Principais Funcionalidades:
+
+Tradução em Lote (Batch Mode): Selecione uma pasta com uma temporada inteira. O programa escaneia, detecta a trilha correta e faz o processo para todos os episódios de uma vez, pulando os que já estão prontos!
+
+Inteligência Artificial Integrada: Conecte sua chave da API do Gemini (Google) e deixe a IA traduzir o texto com contexto perfeito, mantendo a naturalidade das falas.
+
+Preservação Absoluta do Estilo: O SubsTract Pro é inteligente. Ele entende tags complexas de estilo .ass (como {\pos(x,y)}, cores e fontes). A legenda traduzida ficará com o mesmo design da original.
+
+Cópia de Fontes e Anexos: O executável gera o novo MKV mantendo o vídeo e o áudio originais intactos, transferindo até mesmo as fontes .ttf embutidas no arquivo original.
+
+Controle Manual e Flexível: Sem internet ou sem cota na API? Exporte o JSON otimizado com um clique, traduza no ChatGPT/Claude e cole o resultado de volta. O programa remonta o vídeo para você.
+
+Como Funciona?
+
+Escolha o vídeo ou a pasta.
+
+Selecione a trilha de legenda (o app já sugere a faixa em Inglês automaticamente).
+
+Aperte "Traduzir Lote Completo" e vá tomar um café enquanto o software gera os arquivos .mkv prontos em Português.
+
+Requisitos do Sistema:
+
+Windows 10 ou 11 (64-bits).
+
+Nenhuma instalação adicional complexa (FFmpeg já incluso no motor do aplicativo!).
+
+🛒 Dicas de Onde Vender o Software
+Como o seu software atende a um nicho muito específico (entusiastas de vídeo, fansubbers, fãs de cultura pop/animes), você precisa de plataformas que aceitem venda de produtos digitais executáveis.
+
+1. Plataformas Nacionais (Foco em Reais - R$)
+
+Kiwify: Uma das melhores do Brasil hoje em termos de taxa e checkout limpo. Excelente para vender softwares e infoprodutos. Eles entregam o arquivo para download logo após a aprovação do Pix/Cartão.
+
+Hotmart: É o maior marketplace da América Latina. Tem mais credibilidade com o consumidor médio, mas as taxas são um pouco mais altas.
+
+Monetizze / Eduzz: Alternativas à Hotmart, muito boas se você quiser no futuro habilitar "Afiliados" para venderem o SubsTract Pro em troca de comissão.
+
+2. Plataformas Internacionais (Foco em Dólar - USD)
+
+Gumroad: A favorita dos desenvolvedores independentes. É absurdamente fácil criar a página do produto, o visual é moderno e eles cobram apenas uma pequena taxa por venda. Perfeito para vender para o mundo todo.
+
+Itch.io: Apesar de ser focado em jogos indie, possui uma seção gigantesca para "Ferramentas" (Tools). Muitos softwares de edição e produtividade são vendidos lá e a comunidade é muito engajada.
+
+Lemon Squeezy: Concorrente direto do Gumroad, focado em criadores de software e SaaS. Cuida de todos os impostos internacionais para você.
+
+3. Lojas Oficiais
+
+Microsoft Store: Como o seu app já é Windows nativo (construído com Flutter), você pode empacotá-lo como .msix e publicar na loja oficial do Windows. Gera muita confiança, mas exige o pagamento de uma pequena taxa de desenvolvedor (única) à Microsoft.
+
+💡 3 Dicas Extras de Venda
+Grave um Vídeo de Demonstração (Crucial): Softwares de automação vendem muito mais quando o usuário vê a mágica acontecendo. Grave a tela mostrando uma pasta com 3 episódios de um anime não traduzido, clique em "Traduzir Lote" e mostre o resultado final rodando no VLC com a legenda perfeita em PT-BR.
+
+Defina um Preço Estratégico: Como você não tem custos mensais de servidor (o processamento é local e o usuário usa a própria chave API), você pode vender uma "Licença Vitalícia" (Lifetime). Um valor entre R$ 47,00 e R$ 97,00 é altamente atrativo para economizar horas de trabalho.
+
+Crie um tutorial simples sobre a API: Como o usuário precisará colocar a chave do Gemini nas configurações, crie um vídeo de 2 minutos mostrando como ele entra no site do Google AI Studio e gera a chave de graça. Coloque o link desse vídeo no botão "Ajuda" do aplicativo!

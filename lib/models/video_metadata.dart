@@ -5,6 +5,7 @@ class VideoMetadata {
   String episode;
   List<SubtitleTrack> availableTracks;
   SubtitleTrack? selectedTrack;
+  bool isTranslated; // NOVO: Flag de conclusão
 
   VideoMetadata({
     required this.fileName,
@@ -13,6 +14,7 @@ class VideoMetadata {
     this.episode = '',
     this.availableTracks = const [],
     this.selectedTrack,
+    this.isTranslated = false, // Padrão é falso
   });
 
   factory VideoMetadata.fromPath(String path) {
@@ -21,7 +23,6 @@ class VideoMetadata {
         ? name.substring(0, name.lastIndexOf('.')) 
         : name;
 
-    // Tenta extrair o episódio do nome do arquivo (ex: "Anime S01E03" -> "03")
     String ep = '';
     RegExp epRegex = RegExp(r'(?:E|Ep|- |0)(\d{1,3})(?=\D|$)');
     Match? match = epRegex.firstMatch(cleanTitle);
