@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:SubsTract/credit_footer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -68,7 +67,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     }
   }
 
-  // Função de limpeza atualizada com sanitizador de tags ASS
   String _cleanJson(String text) {
     String cleaned = text.replaceAll('```json', '').replaceAll('```', '').trim();
     int start = cleaned.indexOf('[');
@@ -78,9 +76,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       cleaned = cleaned.substring(start, end + 1);
     }
     
-    // SANITIZADOR DE TAGS ASS: 
-    // Procura chaves seguidas de barra (ex: {\pos) que não estejam escapadas
-    // e adiciona a dupla barra (ex: {\\pos) para o JSON não quebrar.
     cleaned = cleaned.replaceAll(RegExp(r'\{\\(?!\\)'), r'{\\\\');
     
     return cleaned;
@@ -150,7 +145,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
       await _extractToMemory();
       final model = GenerativeModel(model: 'models/gemini-2.5-flash', apiKey: _apiKey);
       
-      // PROMPT ATUALIZADO: Focado em escapar aspas e barras invertidas corretamente
       final prompt = "Translate this anime subtitle JSON array to Brazilian Portuguese. "
           "CRITICAL RULES FOR JSON VALIDITY: "
           "1. If the dialogue contains double quotes (\"), replace them with single quotes (') inside the text. "
@@ -173,7 +167,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
     setState(() => _isLoading = true);
     await _extractToMemory();
     
-    // PROMPT ATUALIZADO (MANUAL)
     final prompt = "Atue como tradutor de animes. Traduza este array JSON para PT-BR mantendo as tags de posição e estilo. "
         "MUITO IMPORTANTE PARA NÃO QUEBRAR O JSON: "
         "1. Substitua aspas duplas internas por aspas simples ('). "
@@ -239,7 +232,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
               final pastedText = _pasteController.text;
               if (pastedText.isNotEmpty) {
                 try {
-                  // A função _cleanJson agora fará o tratamento de aspas e barras invertidas
                   final cleaned = _cleanJson(pastedText);
                   jsonDecode(cleaned); 
                   
@@ -265,17 +257,6 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         ],
       ),
     );
-  }
-
-  void _copyPix() async{
-    final chavePix = "gbagamer27@gmail.com";
-    await Clipboard.setData(ClipboardData(text: chavePix));
-  }
-
-  void _copyAddress() async{
-    final cryptoAddress = "bc1qvhuaekwfkhp39cf3a2etewghxegfhvrjhe2yah";
-    await Clipboard.setData(ClipboardData(text: cryptoAddress));
-
   }
 
   Future<void> _generateFinalVideo(String translatedJsonStr) async {
@@ -341,16 +322,27 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
         '-i', translatedAssPath,
         '-map', '0:v',     
         '-map', '0:a',     
-        '-map', '1:s',     
-        '-map', '0:s?',    
+        '-map', '1:s',     // Nova legenda entra como 1ª legenda (índice 0)
+        '-map', '0:s?',    // Legendas antigas entram em seguida
         '-map', '0:t?',    
         '-c:v', 'copy',
         '-c:a', 'copy',
         '-c:s', 'copy',
         '-c:t', 'copy',
-        '-metadata:s:0', 'language=por',
-        '-metadata:s:0', 'title=PT-BR',
+        
+        // 1. METADATA: Usa 's:s:0' (Stream : Subtitle : 0)
+        // 'por' é o padrão ISO 639-2 correto para Português.
+        // O reprodutor vai ler 'por' e juntar com o título, exibindo "POR Português (BR)"
+        '-metadata:s:s:0', 'language=por',
+        '-metadata:s:s:0', 'title=Portugues (BR)',
+        
+        // 2. DISPOSITION: Usa 's:0' (Subtitle : 0)
         '-disposition:s:0', 'default',
+        
+        // BÔNUS: Tira a tag de "padrão/default" da legenda em inglês antiga 
+        // para garantir que o player inicie automaticamente na sua traduzida!
+        '-disposition:s:1', '0', 
+        
         finalVideoPath
       ]);
 
@@ -403,7 +395,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: [
+            children: const [
               Text('Como usar:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               SizedBox(height: 10),
               Text('1. Selecione um vídeo MKV/MP4 com legenda embutida.'),
@@ -423,22 +415,7 @@ class _SubtitleTranslatorPageState extends State<SubtitleTranslatorPage> {
               Text('Créditos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               SizedBox(height: 5),
               Text('SubsTract Pro v1.0.0'),
-              CreditFooter(),
-              SizedBox(height: 5),
-              Row(children: [
-                OutlinedButton.icon(
-                      icon: const Icon(Icons.currency_exchange),
-                      label: const Text('Copiar Pix'),
-                      onPressed:  _copyPix,
-                    ),
-                    SizedBox(width: 10),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.currency_bitcoin),
-                      label: const Text('Copiar Endereço'),
-                      onPressed:  _copyAddress,
-                    ),
-              ],)
-
+              Text('Desenvolvido por Rhyan'),
             ],
           ),
         ),

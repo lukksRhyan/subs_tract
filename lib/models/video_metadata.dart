@@ -3,12 +3,16 @@ class VideoMetadata {
   String filePath;
   String title;
   String episode;
+  List<SubtitleTrack> availableTracks;
+  SubtitleTrack? selectedTrack;
 
   VideoMetadata({
     required this.fileName,
     required this.filePath,
     this.title = '',
     this.episode = '',
+    this.availableTracks = const [],
+    this.selectedTrack,
   });
 
   factory VideoMetadata.fromPath(String path) {
@@ -17,10 +21,20 @@ class VideoMetadata {
         ? name.substring(0, name.lastIndexOf('.')) 
         : name;
 
+    // Tenta extrair o episódio do nome do arquivo (ex: "Anime S01E03" -> "03")
+    String ep = '';
+    RegExp epRegex = RegExp(r'(?:E|Ep|- |0)(\d{1,3})(?=\D|$)');
+    Match? match = epRegex.firstMatch(cleanTitle);
+    if (match != null) {
+      ep = match.group(1) ?? '';
+    }
+
     return VideoMetadata(
       fileName: name,
       filePath: path,
       title: cleanTitle,
+      episode: ep,
+      availableTracks: [],
     );
   }
 }
