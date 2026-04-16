@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:SubsTract/utils.dart/json_utils.dart';
+import 'package:SubsTract/utils/json_utils.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 class GeminiService {
