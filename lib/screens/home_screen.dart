@@ -11,29 +11,70 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Instância do nosso controlador (O "Cérebro")
   final HomeController _controller = HomeController();
   
-  // Variáveis que pertencem estritamente à UI
   String _apiKey = '';
   final _apiKeyController = TextEditingController();
+  final _promptSettingsController = TextEditingController();
 
   @override
   void dispose() {
     _apiKeyController.dispose();
+    _promptSettingsController.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   void _showSettings() {
+    _apiKeyController.text = _apiKey;
+    _promptSettingsController.text = _controller.customPrompt;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Configuração API'),
-        content: TextField(controller: _apiKeyController, decoration: const InputDecoration(labelText: 'Gemini API Key'), obscureText: true),
+        title: const Text('Configurações'),
+        content: SingleChildScrollView(
+          child: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _apiKeyController, 
+                  decoration: const InputDecoration(labelText: 'Gemini API Key', border: OutlineInputBorder()), 
+                  obscureText: true
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _promptSettingsController,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'Prompt Customizado (Cópia Manual)',
+                    hintText: 'Instruções para a IA...',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'O array JSON das legendas será anexado automaticamente ao final deste texto quando você clicar em "Copiar Prompt".', 
+                  style: TextStyle(fontSize: 11, color: Colors.grey)
+                ),
+              ],
+            ),
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Voltar')),
-          ElevatedButton(onPressed: () { setState(() => _apiKey = _apiKeyController.text); Navigator.pop(context); }, child: const Text('Salvar')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () { 
+              setState(() => _apiKey = _apiKeyController.text); 
+              _controller.customPrompt = _promptSettingsController.text;
+              Navigator.pop(context); 
+            }, 
+            child: const Text('Salvar')
+          ),
         ],
       ),
     );
@@ -164,7 +205,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // O ListenableBuilder escuta o Controller e reconstrói a tela quando necessário
     return ListenableBuilder(
       listenable: _controller,
       builder: (context, child) {
@@ -177,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
             actions: [
               Center(child: Padding(padding: const EdgeInsets.only(right: 16.0), child: Text(_controller.status, style: TextStyle(color: Colors.tealAccent[100], fontSize: 12, fontStyle: FontStyle.italic)))),
               if (_controller.isLoading) const Center(child: Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))),
-              IconButton(icon: const Icon(Icons.vpn_key), tooltip: 'Configurações API', onPressed: _showSettings),
+              IconButton(icon: const Icon(Icons.settings), tooltip: 'Configurações', onPressed: _showSettings),
             ],
           ),
           body: Padding(

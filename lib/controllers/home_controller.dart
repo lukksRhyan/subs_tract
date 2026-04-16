@@ -32,7 +32,10 @@ class HomeController extends ChangeNotifier {
   bool isEditingRawTranslation = false; 
   int? editingLineIndex; 
   
-  // Controladores de Texto (Movidos para cá para facilitar a manipulação lógica)
+  // NOVO: Prompt customizável
+  String customPrompt = "Atue como tradutor de animes. Traduza este array JSON para PT-BR mantendo as tags. Mantenha o mesmo número de falas do json resposta.traduza somente as falas em inglês, mantenha as que estiverem em japonês romaji da forma como estão.MUITO IMPORTANTE: 1. Substitua aspas duplas internas por aspas simples (').2. Adicione uma barra extra nas tags de estilo. Ex: {\pos(x,y)} vira {\\pos(x,y)}.Responda APENAS o JSON:";
+  
+  // Controladores de Texto
   final translationController = TextEditingController(); 
   final inlineEditController = TextEditingController(); 
   final titleController = TextEditingController();
@@ -262,12 +265,10 @@ class HomeController extends ChangeNotifier {
   }
 
   Future<void> copyPromptForVideo() async {
-    final prompt = "Atue como tradutor de animes. Traduza este array JSON para PT-BR mantendo as tags. "
-        "MUITO IMPORTANTE: 1. Substitua aspas duplas internas por aspas simples ('). "
-        "2. Adicione uma barra extra nas tags de estilo. Ex: {\\pos(x,y)} vira {\\\\pos(x,y)}. "
-        "Responda APENAS o JSON:\n\n${jsonEncode(extractedDialogues)}";
+    // Agora ele une o prompt customizado com o JSON extraído
+    final finalPrompt = "$customPrompt\n\n${jsonEncode(extractedDialogues)}";
         
-    await Clipboard.setData(ClipboardData(text: prompt));
+    await Clipboard.setData(ClipboardData(text: finalPrompt));
     updateStatus('Prompt copiado! Cole o resultado no painel de Tradução.');
     translationController.clear();
     isEditingRawTranslation = true; 
@@ -309,11 +310,10 @@ class HomeController extends ChangeNotifier {
       editingLineIndex = null;
       updateStatus('Tradução aplicada! Clique em uma linha para editar ou gere o MKV.');
     } catch (e) {
-      throw Exception(e); // Joga o erro para a UI capturar e mostrar no SnackBar
+      throw Exception(e); 
     }
   }
 
-  // Controles de estado curtos
   void toggleRawEditMode() {
     if (!isEditingRawTranslation && translatedDialogues.isNotEmpty) {
       translationController.text = jsonEncode(translatedDialogues);
